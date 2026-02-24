@@ -1,3 +1,4 @@
+import 'camera_description.dart';
 import 'camera_enums.dart';
 
 /// Menyimpan state kamera saat ini
@@ -18,12 +19,13 @@ class CameraValue {
     this.antiMacroEnabled = false,
     this.isMacroDetected = false,
     this.lensDirection = CameraLensDirection.back,
+    this.activeCamera,
+    this.aspectRatio,
     this.errorDescription,
     this.previewSize,
   });
 
-  const CameraValue.uninitialized()
-      : this(isInitialized: false);
+  const CameraValue.uninitialized() : this(isInitialized: false);
 
   final bool isInitialized;
   final bool isRecordingVideo;
@@ -40,6 +42,13 @@ class CameraValue {
   final bool antiMacroEnabled;
   final bool isMacroDetected;
   final CameraLensDirection lensDirection;
+
+  /// Kamera yang sedang aktif (dari [CameraController.availableCameras])
+  final CameraDescription? activeCamera;
+
+  /// Aspect ratio preview saat ini (width / height), misal 4/3 atau 16/9
+  final double? aspectRatio;
+
   final String? errorDescription;
   final CameraSize? previewSize;
 
@@ -59,6 +68,8 @@ class CameraValue {
     bool? antiMacroEnabled,
     bool? isMacroDetected,
     CameraLensDirection? lensDirection,
+    CameraDescription? activeCamera,
+    double? aspectRatio,
     String? errorDescription,
     CameraSize? previewSize,
   }) {
@@ -78,10 +89,35 @@ class CameraValue {
       antiMacroEnabled: antiMacroEnabled ?? this.antiMacroEnabled,
       isMacroDetected: isMacroDetected ?? this.isMacroDetected,
       lensDirection: lensDirection ?? this.lensDirection,
+      activeCamera: activeCamera ?? this.activeCamera,
+      aspectRatio: aspectRatio ?? this.aspectRatio,
       errorDescription: errorDescription,
-        previewSize: previewSize ?? this.previewSize,
+      previewSize: previewSize ?? this.previewSize,
     );
   }
+
+  /// Hapus aspect ratio (kembali ke full-screen)
+  CameraValue clearAspectRatio() => CameraValue(
+        isInitialized: isInitialized,
+        isRecordingVideo: isRecordingVideo,
+        isTakingPicture: isTakingPicture,
+        isStreamingImages: isStreamingImages,
+        flashMode: flashMode,
+        focusMode: focusMode,
+        exposureMode: exposureMode,
+        zoomLevel: zoomLevel,
+        minZoomLevel: minZoomLevel,
+        maxZoomLevel: maxZoomLevel,
+        isTorchOn: isTorchOn,
+        torchLevel: torchLevel,
+        antiMacroEnabled: antiMacroEnabled,
+        isMacroDetected: isMacroDetected,
+        lensDirection: lensDirection,
+        activeCamera: activeCamera,
+        aspectRatio: null,
+        errorDescription: errorDescription,
+        previewSize: previewSize,
+      );
 
   @override
   String toString() {
@@ -90,7 +126,8 @@ class CameraValue {
         'isRecordingVideo: $isRecordingVideo, '
         'flashMode: $flashMode, '
         'zoomLevel: $zoomLevel, '
-        'antiMacroEnabled: $antiMacroEnabled'
+        'antiMacroEnabled: $antiMacroEnabled, '
+        'activeCamera: ${activeCamera?.name}'
         ')';
   }
 }

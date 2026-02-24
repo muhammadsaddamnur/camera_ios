@@ -23,7 +23,6 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
         registrar.addMethodCallDelegate(instance, channel: channel)
         eventChannel.setStreamHandler(instance)
 
-        // Daftarkan platform view untuk preview kamera
         let factory = CameraPreviewFactory(cameraManager: instance.cameraManager)
         registrar.register(factory, withId: "ios_camera_pro/preview")
     }
@@ -34,6 +33,12 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
         let args = call.arguments as? [String: Any] ?? [:]
 
         switch call.method {
+
+        // ── Kamera tersedia ────────────────────────────────────────
+        case "getAvailableCameras":
+            cameraManager.getAvailableCameras(result: result)
+
+        // ── Inisialisasi ───────────────────────────────────────────
         case "initialize":
             handleInitialize(args: args, result: result)
 
@@ -41,10 +46,12 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
             cameraManager.dispose()
             result(nil)
 
+        // ── Anti-macro ─────────────────────────────────────────────
         case "setAntiMacroEnabled":
             let enabled = args["enabled"] as? Bool ?? false
             cameraManager.setAntiMacroEnabled(enabled, result: result)
 
+        // ── Flash & Torch ──────────────────────────────────────────
         case "setFlashMode":
             let mode = args["mode"] as? String ?? "off"
             cameraManager.setFlashMode(mode, result: result)
@@ -54,6 +61,7 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
             let level = (args["level"] as? NSNumber)?.floatValue ?? 1.0
             cameraManager.setTorchMode(enabled, level: level, result: result)
 
+        // ── Zoom ───────────────────────────────────────────────────
         case "setZoomLevel":
             let zoom = (args["zoom"] as? NSNumber)?.doubleValue ?? 1.0
             cameraManager.setZoomLevel(CGFloat(zoom), result: result)
@@ -61,11 +69,13 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
         case "getZoomRange":
             cameraManager.getZoomRange(result: result)
 
+        // ── Focus ──────────────────────────────────────────────────
         case "setFocusPoint":
             let x = (args["x"] as? NSNumber)?.doubleValue ?? 0.5
             let y = (args["y"] as? NSNumber)?.doubleValue ?? 0.5
             cameraManager.setFocusPoint(x: x, y: y, result: result)
 
+        // ── Exposure ───────────────────────────────────────────────
         case "setExposurePoint":
             let x = (args["x"] as? NSNumber)?.doubleValue ?? 0.5
             let y = (args["y"] as? NSNumber)?.doubleValue ?? 0.5
@@ -75,9 +85,15 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
             let ev = (args["ev"] as? NSNumber)?.floatValue ?? 0.0
             cameraManager.setExposureCompensation(ev, result: result)
 
+        // ── Ganti kamera ───────────────────────────────────────────
         case "switchCamera":
             cameraManager.switchCamera(result: result)
 
+        case "switchToCamera":
+            let cameraId = args["cameraId"] as? String ?? ""
+            cameraManager.switchToCamera(cameraId: cameraId, result: result)
+
+        // ── Foto & Video ───────────────────────────────────────────
         case "takePicture":
             cameraManager.takePicture(result: result)
 
@@ -93,7 +109,6 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
     }
 
     private func handleInitialize(args: [String: Any], result: @escaping FlutterResult) {
-        // Cek izin kamera
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             doInitialize(args: args, result: result)
@@ -104,21 +119,13 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
                     if granted {
                         self?.doInitialize(args: args, result: result)
                     } else {
-                        result(FlutterError(
-                            code: "PERMISSION_DENIED",
-                            message: "Izin kamera ditolak",
-                            details: nil
-                        ))
+                        result(FlutterError(code: "PERMISSION_DENIED", message: "Izin kamera ditolak", details: nil))
                     }
                 }
             }
 
         case .denied, .restricted:
-            result(FlutterError(
-                code: "PERMISSION_DENIED",
-                message: "Izin kamera tidak tersedia. Buka Settings untuk mengizinkan.",
-                details: nil
-            ))
+            result(FlutterError(code: "PERMISSION_DENIED", message: "Izin kamera tidak tersedia. Buka Settings.", details: nil))
 
         @unknown default:
             result(FlutterError(code: "UNKNOWN", message: "Status izin tidak diketahui", details: nil))
@@ -126,13 +133,15 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
     }
 
     private func doInitialize(args: [String: Any], result: @escaping FlutterResult) {
-        let lensDirection = args["lensDirection"] as? String ?? "back"
-        let resolution = args["resolution"] as? String ?? "high"
+        let lensDirection   = args["lensDirection"] as? String ?? "back"
+        let cameraId        = args["cameraId"] as? String          // optional, dari CameraDescription.uniqueId
+        let resolution      = args["resolution"] as? String ?? "high"
         let enableAntiMacro = args["enableAntiMacro"] as? Bool ?? false
 
         cameraManager.setEventSink(eventSink)
         cameraManager.initialize(
             cameraPosition: lensDirection,
+            cameraId: cameraId,
             resolution: resolution,
             enableAntiMacro: enableAntiMacro,
             result: result
@@ -140,7 +149,7 @@ public class IosCameraProPlugin: NSObject, FlutterPlugin {
     }
 }
 
-// MARK: - FlutterStreamHandler (Event Channel)
+// MARK: - FlutterStreamHandler
 
 extension IosCameraProPlugin: FlutterStreamHandler {
     public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {

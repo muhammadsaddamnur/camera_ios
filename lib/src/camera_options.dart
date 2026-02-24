@@ -1,17 +1,26 @@
+import 'camera_description.dart';
 import 'camera_enums.dart';
 
-/// Opsi inisialisasi kamera
+/// Opsi inisialisasi kamera.
+///
+/// Jika [camera] disediakan, field ini mengambil prioritas atas [lensDirection]
+/// dan kamera persis tersebut yang akan dipakai (berdasarkan [CameraDescription.uniqueId]).
 class CameraOptions {
   const CameraOptions({
     this.lensDirection = CameraLensDirection.back,
+    this.camera,
     this.resolution = ResolutionPreset.high,
     this.enableAntiMacro = false,
     this.enableAudio = true,
     this.autoFlash = false,
   });
 
-  /// Arah lensa (depan/belakang)
+  /// Arah lensa (depan/belakang) — diabaikan jika [camera] disediakan
   final CameraLensDirection lensDirection;
+
+  /// Kamera spesifik dari [CameraController.availableCameras()].
+  /// Jika null, [lensDirection] digunakan sebagai fallback.
+  final CameraDescription? camera;
 
   /// Preset resolusi
   final ResolutionPreset resolution;
@@ -27,7 +36,8 @@ class CameraOptions {
 
   Map<String, dynamic> toMap() {
     return {
-      'lensDirection': lensDirection.name,
+      'lensDirection': camera?.lensDirection.name ?? lensDirection.name,
+      'cameraId': camera?.uniqueId,
       'resolution': resolution.name,
       'enableAntiMacro': enableAntiMacro,
       'enableAudio': enableAudio,

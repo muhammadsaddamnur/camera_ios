@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'camera_description.dart';
 import 'camera_enums.dart';
 import 'camera_exception.dart';
 import 'camera_options.dart';
@@ -12,13 +13,19 @@ import 'camera_value.dart';
 ///
 /// Contoh penggunaan:
 /// ```dart
+/// // 1. Dapatkan daftar kamera
+/// final cameras = await CameraController.availableCameras();
+///
+/// // 2. Pilih kamera yang diinginkan
+/// final backWide = cameras.firstWhere(
+///   (c) => c.lensDirection == CameraLensDirection.back
+///         && c.deviceType == CameraDeviceType.wideAngle,
+/// );
+///
+/// // 3. Inisialisasi controller
 /// final controller = CameraController();
 /// await controller.initialize(
-///   options: CameraOptions(
-///     lensDirection: CameraLensDirection.back,
-///     resolution: ResolutionPreset.high,
-///     enableAntiMacro: true,
-///   ),
+///   options: CameraOptions(camera: backWide, enableAntiMacro: true),
 /// );
 /// ```
 class CameraController extends ValueNotifier<CameraValue> {
@@ -35,31 +42,58 @@ class CameraController extends ValueNotifier<CameraValue> {
   Stream<CameraEvent> get cameraEvents => _cameraEventController.stream;
 
   /// Stream khusus event macro terdeteksi
-  Stream<CameraEvent> get onMacroDetected => cameraEvents.where(
-        (e) => e.type == CameraEventType.macroDetected,
-      );
+  Stream<CameraEvent> get onMacroDetected =>
+      cameraEvents.where((e) => e.type == CameraEventType.macroDetected);
 
   bool _isDisposed = false;
+
+  // ─────────────────────────────────────────
+  // AVAILABLE CAMERAS (static)
+  // ─────────────────────────────────────────
+
+  /// Dapatkan daftar semua kamera yang tersedia di perangkat.
+  ///
+  /// Mirip dengan `availableCameras()` dari package `camera`.
+  ///
+  /// ```dart
+  /// final cameras = await CameraController.availableCameras();
+  /// // cameras berisi wide angle, ultrawide, telephoto, front, dll
+  /// ```
+  static Future<List<CameraDescription>> availableCameras() async {
+    try {
+      final raw = await _channel.invokeListMethod<dynamic>('getAvailableCameras') ?? [];
+      return raw
+          .whereType<Map<dynamic, dynamic>>()
+          .map(CameraDescription.fromMap)
+          .toList();
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
 
   // ─────────────────────────────────────────
   // INIT & DISPOSE
   // ─────────────────────────────────────────
 
   /// Inisialisasi kamera dengan opsi yang ditentukan.
+  ///
+  /// Jika [options.camera] disediakan, kamera spesifik tersebut yang digunakan.
+  /// Jika tidak, [options.lensDirection] digunakan sebagai fallback.
   Future<void> initialize({
     CameraOptions options = const CameraOptions(),
   }) async {
     _checkNotDisposed();
-
     _startListeningEvents();
 
     try {
       await _channel.invokeMethod<void>('initialize', options.toMap());
-      final zoomRange = await _channel.invokeMapMethod<String, dynamic>('getZoomRange') ?? {};
+      final zoomRange =
+          await _channel.invokeMapMethod<String, dynamic>('getZoomRange') ?? {};
 
       value = value.copyWith(
         isInitialized: true,
-        lensDirection: options.lensDirection,
+        lensDirection: options.camera?.lensDirection ?? options.lensDirection,
+        activeCamera: options.camera,
         antiMacroEnabled: options.enableAntiMacro,
         flashMode: options.autoFlash ? FlashMode.auto : FlashMode.off,
         minZoomLevel: (zoomRange['min'] as num?)?.toDouble() ?? 1.0,
@@ -93,9 +127,6 @@ class CameraController extends ValueNotifier<CameraValue> {
   // ─────────────────────────────────────────
 
   /// Aktifkan/nonaktifkan fitur anti-macro.
-  ///
-  /// Ketika aktif, kamera tidak akan otomatis berpindah ke lensa ultra-wide
-  /// (macro) pada iPhone 13 Pro ke atas.
   Future<void> setAntiMacroEnabled(bool enabled) async {
     _checkInitialized();
     try {
@@ -111,9 +142,6 @@ class CameraController extends ValueNotifier<CameraValue> {
   // ─────────────────────────────────────────
 
   /// Set mode flash.
-  ///
-  /// [FlashMode.torch] menyalakan flash sebagai senter terus-menerus.
-  /// Untuk mode torch gunakan [setTorchMode] agar bisa atur brightness.
   Future<void> setFlashMode(FlashMode mode) async {
     _checkInitialized();
     try {
@@ -124,12 +152,8 @@ class CameraController extends ValueNotifier<CameraValue> {
         });
         value = value.copyWith(flashMode: FlashMode.torch, isTorchOn: true);
       } else {
-        // Matikan torch dulu jika sedang menyala
         if (value.isTorchOn) {
-          await _channel.invokeMethod<void>('setTorchMode', {
-            'enabled': false,
-            'level': 1.0,
-          });
+          await _channel.invokeMethod<void>('setTorchMode', {'enabled': false, 'level': 1.0});
         }
         await _channel.invokeMethod<void>('setFlashMode', {'mode': mode.name});
         value = value.copyWith(flashMode: mode, isTorchOn: false);
@@ -139,13 +163,10 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
-  /// Nyalakan/matikan torch (flash terus-menerus / senter).
-  ///
-  /// [level] antara 0.0 - 1.0, default 1.0 (max brightness).
+  /// Nyalakan/matikan torch. [level] antara 0.0–1.0.
   Future<void> setTorchMode({bool enabled = true, double level = 1.0}) async {
     _checkInitialized();
-    assert(level >= 0.0 && level <= 1.0, 'Torch level harus antara 0.0 dan 1.0');
-
+    assert(level >= 0.0 && level <= 1.0);
     try {
       await _channel.invokeMethod<void>('setTorchMode', {
         'enabled': enabled,
@@ -165,9 +186,7 @@ class CameraController extends ValueNotifier<CameraValue> {
   // ZOOM
   // ─────────────────────────────────────────
 
-  /// Set level zoom kamera.
-  ///
-  /// [zoom] akan di-clamp ke range [minZoomLevel]..[maxZoomLevel].
+  /// Set level zoom. Akan di-clamp ke [minZoomLevel]..[maxZoomLevel].
   Future<void> setZoomLevel(double zoom) async {
     _checkInitialized();
     final clamped = zoom.clamp(value.minZoomLevel, value.maxZoomLevel);
@@ -183,13 +202,9 @@ class CameraController extends ValueNotifier<CameraValue> {
   // FOKUS & EXPOSURE
   // ─────────────────────────────────────────
 
-  /// Set titik fokus kamera.
-  ///
-  /// [x] dan [y] adalah koordinat normalized (0.0 - 1.0).
+  /// Set titik fokus (normalized 0.0–1.0).
   Future<void> setFocusPoint(double x, double y) async {
     _checkInitialized();
-    assert(x >= 0.0 && x <= 1.0 && y >= 0.0 && y <= 1.0,
-        'Koordinat fokus harus antara 0.0 dan 1.0');
     try {
       await _channel.invokeMethod<void>('setFocusPoint', {'x': x, 'y': y});
     } on PlatformException catch (e) {
@@ -197,19 +212,7 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
-  /// Set exposure compensation (EV).
-  ///
-  /// Range EV tergantung perangkat, biasanya -2.0 hingga +2.0.
-  Future<void> setExposureCompensation(double ev) async {
-    _checkInitialized();
-    try {
-      await _channel.invokeMethod<void>('setExposureCompensation', {'ev': ev});
-    } on PlatformException catch (e) {
-      throw CameraException(e.code, e.message);
-    }
-  }
-
-  /// Set titik exposure kamera (normalized 0.0 - 1.0).
+  /// Set titik exposure (normalized 0.0–1.0).
   Future<void> setExposurePoint(double x, double y) async {
     _checkInitialized();
     try {
@@ -219,21 +222,79 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
+  /// Set exposure compensation dalam EV (biasanya -2.0 hingga +2.0).
+  Future<void> setExposureCompensation(double ev) async {
+    _checkInitialized();
+    try {
+      await _channel.invokeMethod<void>('setExposureCompensation', {'ev': ev});
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
   // ─────────────────────────────────────────
   // GANTI KAMERA
   // ─────────────────────────────────────────
 
-  /// Ganti antara kamera depan dan belakang.
+  /// Toggle antara kamera depan dan belakang.
   Future<void> switchCamera() async {
     _checkInitialized();
     try {
       final result = await _channel.invokeMethod<String>('switchCamera');
-      final newDirection = result == 'front'
-          ? CameraLensDirection.front
-          : CameraLensDirection.back;
-      value = value.copyWith(lensDirection: newDirection);
+      final newDirection =
+          result == 'front' ? CameraLensDirection.front : CameraLensDirection.back;
+      value = value.copyWith(lensDirection: newDirection, activeCamera: null);
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
+    }
+  }
+
+  /// Ganti ke kamera spesifik dari [availableCameras].
+  ///
+  /// ```dart
+  /// final cameras = await CameraController.availableCameras();
+  /// final telephoto = cameras.firstWhere(
+  ///   (c) => c.deviceType == CameraDeviceType.telephoto,
+  /// );
+  /// await controller.switchToCamera(telephoto);
+  /// ```
+  Future<void> switchToCamera(CameraDescription camera) async {
+    _checkInitialized();
+    try {
+      await _channel.invokeMethod<void>('switchToCamera', {'cameraId': camera.uniqueId});
+
+      final zoomRange =
+          await _channel.invokeMapMethod<String, dynamic>('getZoomRange') ?? {};
+      value = value.copyWith(
+        lensDirection: camera.lensDirection,
+        activeCamera: camera,
+        minZoomLevel: (zoomRange['min'] as num?)?.toDouble() ?? 1.0,
+        maxZoomLevel: (zoomRange['max'] as num?)?.toDouble() ?? 10.0,
+        zoomLevel: (zoomRange['current'] as num?)?.toDouble() ?? 1.0,
+      );
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // ASPECT RATIO
+  // ─────────────────────────────────────────
+
+  /// Set aspect ratio preview (width / height).
+  ///
+  /// Gunakan konstanta dari [CameraAspectRatio]:
+  /// ```dart
+  /// controller.setAspectRatio(CameraAspectRatio.ratio16x9.ratio); // 16/9
+  /// controller.setAspectRatio(CameraAspectRatio.ratio4x3.ratio);  // 4/3
+  /// controller.setAspectRatio(null); // full screen
+  /// ```
+  void setAspectRatio(double? ratio) {
+    _checkInitialized();
+    if (ratio == null) {
+      value = value.clearAspectRatio();
+    } else {
+      value = value.copyWith(aspectRatio: ratio);
     }
   }
 
@@ -242,20 +303,15 @@ class CameraController extends ValueNotifier<CameraValue> {
   // ─────────────────────────────────────────
 
   /// Ambil foto dan kembalikan path file-nya.
-  ///
-  /// File disimpan di direktori temporary sistem.
   Future<String> takePicture() async {
     _checkInitialized();
     if (value.isTakingPicture) {
       throw const CameraException('CAPTURE_ERROR', 'Sedang mengambil foto');
     }
-
     value = value.copyWith(isTakingPicture: true);
     try {
       final path = await _channel.invokeMethod<String>('takePicture');
-      if (path == null) {
-        throw const CameraException('CAPTURE_ERROR', 'Path foto kosong');
-      }
+      if (path == null) throw const CameraException('CAPTURE_ERROR', 'Path foto kosong');
       return path;
     } on PlatformException catch (e) {
       throw CameraException(e.code, e.message);
@@ -282,8 +338,7 @@ class CameraController extends ValueNotifier<CameraValue> {
     }
   }
 
-  /// Stop rekam video. Event [CameraEventType.videoRecordingStopped]
-  /// akan mengandung path file video.
+  /// Stop rekam video.
   Future<void> stopVideoRecording() async {
     _checkInitialized();
     if (!value.isRecordingVideo) {
@@ -308,14 +363,12 @@ class CameraController extends ValueNotifier<CameraValue> {
         if (data is Map) {
           final event = CameraEvent.fromMap(data);
           _cameraEventController.add(event);
-
           switch (event.type) {
             case CameraEventType.macroDetected:
               value = value.copyWith(isMacroDetected: true);
             case CameraEventType.error:
               value = value.copyWith(
-                errorDescription: event.data?['message']?.toString(),
-              );
+                  errorDescription: event.data?['message']?.toString());
             default:
               break;
           }
@@ -323,9 +376,8 @@ class CameraController extends ValueNotifier<CameraValue> {
       },
       onError: (dynamic error) {
         if (error is PlatformException) {
-          _cameraEventController.addError(
-            CameraException(error.code, error.message),
-          );
+          _cameraEventController
+              .addError(CameraException(error.code, error.message));
         }
       },
     );
@@ -335,18 +387,13 @@ class CameraController extends ValueNotifier<CameraValue> {
     _checkNotDisposed();
     if (!value.isInitialized) {
       throw const CameraException(
-        'NOT_INITIALIZED',
-        'Panggil initialize() terlebih dahulu',
-      );
+          'NOT_INITIALIZED', 'Panggil initialize() terlebih dahulu');
     }
   }
 
   void _checkNotDisposed() {
     if (_isDisposed) {
-      throw const CameraException(
-        'DISPOSED',
-        'Controller sudah di-dispose',
-      );
+      throw const CameraException('DISPOSED', 'Controller sudah di-dispose');
     }
   }
 }

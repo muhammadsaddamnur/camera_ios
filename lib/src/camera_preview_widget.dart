@@ -10,17 +10,33 @@ import 'camera_value.dart';
 ///
 /// Contoh:
 /// ```dart
-/// if (controller.value.isInitialized)
-///   CameraPreview(controller: controller)
+/// // Full screen (default)
+/// CameraPreview(controller: controller)
+///
+/// // Dengan aspect ratio 16:9
+/// CameraPreview(
+///   controller: controller,
+///   aspectRatio: CameraAspectRatio.ratio16x9.ratio,
+/// )
+///
+/// // Aspect ratio dari CameraValue (diatur lewat controller.setAspectRatio)
+/// CameraPreview(controller: controller) // otomatis baca dari controller.value.aspectRatio
 /// ```
 class CameraPreview extends StatelessWidget {
   const CameraPreview({
     super.key,
     required this.controller,
+    this.aspectRatio,
     this.child,
   });
 
   final CameraController controller;
+
+  /// Aspect ratio override (width / height), misal `16 / 9` atau `4 / 3`.
+  ///
+  /// Jika null, widget memakai [CameraValue.aspectRatio] dari controller.
+  /// Jika keduanya null, preview mengisi seluruh area (fit.expand).
+  final double? aspectRatio;
 
   /// Widget yang di-overlay di atas preview kamera (opsional).
   final Widget? child;
@@ -34,12 +50,34 @@ class CameraPreview extends StatelessWidget {
           return const ColoredBox(color: Color(0xFF000000));
         }
 
+        // Tentukan aspect ratio: parameter > controller value > null (fullscreen)
+        final effectiveRatio = aspectRatio ?? value.aspectRatio;
+
+        const nativeView = UiKitView(
+          viewType: 'ios_camera_pro/preview',
+          creationParamsCodec: StandardMessageCodec(),
+        );
+
+        if (effectiveRatio == null) {
+          // Full screen
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              nativeView,
+              if (child != null) child!,
+            ],
+          );
+        }
+
+        // Dengan aspect ratio — center + clip
         return Stack(
           fit: StackFit.expand,
           children: [
-            const UiKitView(
-              viewType: 'ios_camera_pro/preview',
-              creationParamsCodec: StandardMessageCodec(),
+            Center(
+              child: AspectRatio(
+                aspectRatio: effectiveRatio,
+                child: nativeView,
+              ),
             ),
             if (child != null) child!,
           ],
