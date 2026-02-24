@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/muhammadsaddamnur/Documents/development/open_source/camera_ios/example && flutter create . --org com.example --project-name ios_camera_pro_example --platforms ios 2>&1)",
+      "Bash(flutter pub:*)",
+      "Bash(head:*)",
+      "Bash(cd /Users/muhammadsaddamnur/Documents/development/open_source/camera_ios/example/ios && pod install 2>&1)",
+      "Bash(cd /Users/muhammadsaddamnur/Documents/development/open_source/camera_ios/example && flutter analyze 2>&1)",
+      "Bash(flutter analyze:*)",
+      "Bash(cd /Users/muhammadsaddamnur/Documents/development/open_source/camera_ios/example && flutter build ios --no-codesign 2>&1)",
+      "Bash(flutter build:*)"
+    ]
+  }
+}

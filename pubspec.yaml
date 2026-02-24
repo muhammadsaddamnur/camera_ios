@@ -1,0 +1,26 @@
+name: ios_camera_pro
+description: >-
+  A comprehensive iOS camera Flutter plugin with anti-macro detection,
+  flash control, torch, zoom, focus, exposure, photo capture, and video recording.
+version: 0.1.0
+homepage: https://github.com/your-repo/ios_camera_pro
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  plugin_platform_interface: ^2.1.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: IosCameraProPlugin
