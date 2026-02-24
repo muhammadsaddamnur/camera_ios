@@ -109,17 +109,21 @@ class CameraLayerView: UIView {
         let interfaceOrientation: UIInterfaceOrientation
 
         if #available(iOS 16.0, *) {
-            // iOS 16+: gunakan keyWindow.windowScene
+            // iOS 16+: pakai connectedScenes API yang tidak deprecated
             interfaceOrientation = UIApplication.shared
                 .connectedScenes
                 .compactMap { $0 as? UIWindowScene }
                 .first { $0.activationState == .foregroundActive }?
                 .interfaceOrientation ?? .portrait
-        } else {
+        } else if #available(iOS 13.0, *) {
+            // iOS 13–15: pakai windowScene
             interfaceOrientation = UIApplication.shared.windows
                 .first(where: { $0.isKeyWindow })?
                 .windowScene?
                 .interfaceOrientation ?? .portrait
+        } else {
+            // iOS 12: pakai statusBarOrientation (deprecated di iOS 13, tapi masih tersedia)
+            interfaceOrientation = UIApplication.shared.statusBarOrientation
         }
 
         connection.videoOrientation = mapToVideoOrientation(interfaceOrientation)
