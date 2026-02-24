@@ -159,6 +159,7 @@ class CameraManager: NSObject {
         enableAntiMacro: Bool,
         result: @escaping FlutterResult
     ) {
+        session?.stopRunning()
         let newSession = AVCaptureSession()
         newSession.beginConfiguration()
         newSession.sessionPreset = preset

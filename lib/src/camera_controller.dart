@@ -87,8 +87,10 @@ class CameraController extends ValueNotifier<CameraValue> {
 
     try {
       await _channel.invokeMethod<void>('initialize', options.toMap());
+      if (_isDisposed) return;
       final zoomRange =
           await _channel.invokeMapMethod<String, dynamic>('getZoomRange') ?? {};
+      if (_isDisposed) return;
 
       value = value.copyWith(
         isInitialized: true,

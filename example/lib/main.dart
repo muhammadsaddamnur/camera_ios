@@ -81,19 +81,11 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _initWithCamera(CameraDescription? camera) async {
-    if (mounted) setState(() => _isInitializing = true);
+    if (!mounted) return;
+    setState(() => _isInitializing = true);
 
     _macroSub?.cancel();
 
-    try {
-      // Dispose controller lama jika sudah initialized
-      if (_controller.value.isInitialized) {
-        await _controller.dispose();
-      }
-    } catch (_) {}
-
-    // Buat controller baru jika perlu
-    // (Controller bisa di-reuse jika belum disposed)
     try {
       await _controller.initialize(
         options: CameraOptions(
@@ -153,9 +145,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive) {
-      _controller.dispose();
-    } else if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.resumed) {
       _loadCameras();
     }
   }
